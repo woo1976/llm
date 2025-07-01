@@ -1,3 +1,7 @@
+# Install library if not installed yet.
+# pip install -U chromadb
+
+# Load libraries
 import os
 import json
 import requests
@@ -149,12 +153,15 @@ def generate_gpt4o_response(query, context_docs, max_context_tokens=6000):
 
     # Combine into a single string
     combined_context = "\n\n".join(summarized_contexts)
-    
+
     # Truncate
     context = truncate_to_token_limit(combined_context, max_context_tokens)
 
-    prompt = f"""You are an assistant that provides detailed answers based on the following context. 
-The answer should include the most relevant file name and its path. It would be also better to include summary of the file.
+    prompt = f"""You are an assistant that provides detailed answers based on the following context.
+Please generate 3 distinct answers in the order from the most relevant one to the least relevant one. 
+Each answer should be different in terms of file names and contents.
+Each answer should include a file name and its path. 
+It would be also better for each asnwer to include summary of the file
 Lastly, it would be best to have the most relevant code snippet from the script:
 
 Context:
@@ -166,31 +173,44 @@ Question:
 Answer:"""
 
     try:
-        response = client.beta.chat.completions.parse(
+       response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": prompt}
             ],
             max_tokens=1000,
-            temperature=0.2,
-            response_format=ResFormat,
+            temperature=0.2
         )
-        answer = response.choices[0].message.content
-        json_answer = json.loads(answer)
+       answer = response.choices[0].message.content.strip()
+       
+       return answer
+        # Save the below for later usage just in case.
+        # response = client.beta.chat.completions.parse(
+        #     model="gpt-4o",
+        #     messages=[
+        #         {"role": "system", "content": "You are a helpful assistant."},
+        #         {"role": "user", "content": prompt}
+        #     ],
+        #     max_tokens=1000,
+        #     temperature=0.2,
+        #     response_format=ResFormat,
+        # )
+        # answer = response.choices[0].message.content
+        # json_answer = json.loads(answer)
 
-        return json_answer
-        
+        # return json_answer
+
     except Exception as e:
         print(f"Error generating GPT-4o response: {e}")
         return "I'm sorry, I couldn't process your request at the moment."
 
-# Define a structured output for LLM results
-class ResFormat(BaseModel):
-    file_name: str
-    file_path: str
-    summary: str
-    code_snippet: str
+# Define a structured output for LLM results (save this for later usage just in case)
+# class ResFormat(BaseModel):
+#     file_name: str
+#     file_path: str
+#     summary: str
+#     code_snippet: str
 
 #  Extract repo contents
 res = get_contents(owner=owner, repo=repo, path=path, branch=branch)
@@ -204,8 +224,8 @@ ids = [file['path'] for file in flat_files]
 collection = chroma_client.get_or_create_collection(name="example_collection", embedding_function=default_ef)
 collection.add(documents=texts, metadatas=metadatas, ids=ids)
 
-# Query results
-query = "Give me the script name having the python code test. It would be better for the script to have library import and function details."
+# Query results from vector DB
+query = "Give me a script that is related to testing."
 top_k = 5
 results = collection.query(
         query_texts=[query],
@@ -222,8 +242,10 @@ context_docs = [doc for doc in retrieved_docs_with_metadata]
 # Generate LLM agent answers
 answer = generate_gpt4o_response(query, context_docs)
 
-print(answer['file_name'])
-print(answer['file_path'])
-print(answer['summary'])
-print(answer['code_snippet'])
+print(answer)
+# Save the below for later usage just in case.
+# print(answer['file_name'])
+# print(answer['file_path'])
+# print(answer['summary'])
+# print(answer['code_snippet'])
 
