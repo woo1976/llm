@@ -1,6 +1,3 @@
-# %%capture --no-stderr
-# %pip install -U chromadb
-
 import os
 import json
 import requests
@@ -10,8 +7,11 @@ from chromadb.config import Settings
 from chromadb.utils import embedding_functions
 from openai import OpenAI
 from tiktoken import encoding_for_model
+from pydantic import BaseModel
+import json
 
-dir_path = "/content/drive/MyDrive/Colab_Notebooks/"
+# Path setting
+dir_path = '/content/drive/MyDrive/Colab_Notebooks/'
 
 # API keys
 openai_file = "googlecolab_openai_key.txt"
@@ -20,11 +20,23 @@ with open(dir_path + openai_file, "r") as file:
 
 if not os.environ.get("OPENAI_API_KEY"):
     os.environ["OPENAI_API_KEY"] = openai_api_key
+
+# Set OpenAI client and Chorma client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
 chroma_client = chromadb.PersistentClient(path=dir_path+"+repo_search/chroma_db")
-default_ef = embedding_functions.DefaultEmbeddingFunction() # default: ll-MiniLM-L6-v2
+# chroma_client.delete_collection("example_collection_2")
 
+# Embedding model
+default_ef = embedding_functions.DefaultEmbeddingFunction() # by default, all-MiniLM-L6-v2
+
+# Information on repo to search. 
+# In the function 'get_contents', need the info for api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
+owner="woo1976"
+repo="jenkins-python-test"
+path=""
+branch="master"
+
+# Functions
 def get_repo_info(repo_url):
     """
     Extract the owner and repository name from the GitHub URL.
@@ -82,17 +94,136 @@ def get_contents(owner="woo1976", repo="jenkins-python-test", path="", branch="m
             })
     return contents
 
-# Test
-res = get_contents
+def flatten_contents(contents):
+    """
+    Flatten the nested contents into a list of files with paths and contents.
+    """
+    flat_files = []
 
-# [{'type': 'file',
-#   'path': '.behaverc',
-#   'content': '[behave]\r\npaths=tests/features'},
-#  {'type': 'file',
-#   'path': '.gitignore',
-#   'content': '# Byte-compiled / optimized / DLL files\r\n__pycache__/\r\n*.py[cod]\r\n*$py.class\r\n\r\n# C extensions\r\n*.so\r\n\r\n# Distribution / packaging\r\n.Python\r\nenv/\r\nbuild/\r\ndevelop-eggs/\r\ndist/\r\ndownloads/\r\neggs/\r\n.eggs/\r\nlib/\r\nlib64/\r\nparts/\r\nsdist/\r\nvar/\r\nwheels/\r\n*.egg-info/\r\n.installed.cfg\r\n*.egg\r\n\r\n# PyInstaller\r\n#  Usually these files are written by a python script from a template\r\n#  before PyInstaller builds the exe, so as to inject date/other infos into it.\r\n*.manifest\r\n*.spec\r\n\r\n# Installer logs\r\npip-log.txt\r\npip-delete-this-directory.txt\r\n\r\n# Unit test / coverage reports\r\nhtmlcov/\r\n.tox/\r\n.coverage\r\n.coverage.*\r\n.cache\r\nnosetests.xml\r\ncoverage.xml\r\n*.cover\r\n.hypothesis/\r\n.pytest_cache/\r\ntest-reports/\r\n\r\n# Translations\r\n*.mo\r\n*.pot\r\n\r\n# Django stuff:\r\n*.log\r\nlocal_settings.py\r\n\r\n# Flask stuff:\r\ninstance/\r\n.webassets-cache\r\n\r\n# Scrapy stuff:\r\n.scrapy\r\n\r\n# Sphinx documentation\r\ndocs/_build/\r\n\r\n# PyBuilder\r\ntarget/\r\n\r\n# Jupyter Notebook\r\n.ipynb_checkpoints\r\n\r\n# pyenv\r\n.python-version\r\n\r\n# celery beat schedule file\r\ncelerybeat-schedule\r\n\r\n# SageMath parsed files\r\n*.sage.py\r\n\r\n# dotenv\r\n.env\r\n\r\n# virtualenv\r\n.venv\r\nvenv/\r\nENV/\r\n\r\n# Spyder project settings\r\n.spyderproject\r\n.spyproject\r\n\r\n# Rope project settings\r\n.ropeproject\r\n\r\n# mkdocs documentation\r\n/site\r\n\r\n# mypy\r\n.mypy_cache/\r\n'},
-#  {'type': 'file',
-#   'path': 'Jenkinsfile',
-#   'content': 'pipeline {\r\n    agent any\r\n\r\n    triggers {\r\n        pollSCM(\'*/5 * * * 1-5\')\r\n    }\r\n\r\n    options {\r\n        skipDefaultCheckout(true)\r\n        // Keep the 10 most recent builds\r\n        buildDiscarder(logRotator(numToKeepStr: \'10\'))\r\n        timestamps()\r\n    }\r\n\r\n    environment {\r\n      PATH=\'%PATH%;C:\\\\Program Files (x86)\\\\Jenkins\\\\miniconda3;C:\\\\Program Files (x86)\\\\Jenkins\\\\miniconda3\\\\Scripts\'\r\n    }\r\n\r\n    stages {\r\n        stage(\'Check path\') {\r\n            steps{\r\n                echo %PATH%\r\n            }    \r\n        }\t\t\t\t\r\n        stage ("Code pull"){\r\n            steps{\r\n                checkout scm\r\n            }\r\n        }\r\n\r\n        stage(\'Build environment\') {\r\n            steps {\r\n                echo "Building virtualenv"\r\n                sh  \'\'\' conda create --yes -n ${BUILD_TAG} python\r\n                        source activate ${BUILD_TAG}\r\n                        pip install -r requirements/dev.txt\r\n                    \'\'\'\r\n            }\r\n        }\r\n\r\n        stage(\'Static code metrics\') {\r\n            steps {\r\n                echo "Raw metrics"\r\n                sh  \'\'\' source activate ${BUILD_TAG}\r\n                        radon raw --json irisvmpy > raw_report.json\r\n                        radon cc --json irisvmpy > cc_report.json\r\n                        radon mi --json irisvmpy > mi_report.json\r\n                        sloccount --duplicates --wide irisvmpy > sloccount.sc\r\n                    \'\'\'\r\n                echo "Test coverage"\r\n                sh  \'\'\' source activate ${BUILD_TAG}\r\n                        coverage run irisvmpy/iris.py 1 1 2 3\r\n                        python -m coverage xml -o reports/coverage.xml\r\n                    \'\'\'\r\n                echo "Style check"\r\n                sh  \'\'\' source activate ${BUILD_TAG}\r\n                        pylint irisvmpy || true\r\n                    \'\'\'\r\n            }\r\n            post{\r\n                always{\r\n                    step([$class: \'CoberturaPublisher\',\r\n                                   autoUpdateHealth: false,\r\n                                   autoUpdateStability: false,\r\n                                   coberturaReportFile: \'reports/coverage.xml\',\r\n                                   failNoReports: false,\r\n                                   failUnhealthy: false,\r\n                                   failUnstable: false,\r\n                                   maxNumberOfBuilds: 10,\r\n                                   onlyStable: false,\r\n                                   sourceEncoding: \'ASCII\',\r\n                                   zoomCoverageChart: false])\r\n                }\r\n            }\r\n        }\r\n\r\n\r\n\r\n        stage(\'Unit tests\') {\r\n            steps {\r\n                sh  \'\'\' source activate ${BUILD_TAG}\r\n                        python -m pytest --verbose --junit-xml reports/unit_tests.xml\r\n                    \'\'\'\r\n            }\r\n            post {\r\n                always {\r\n                    // Archive unit tests for the future\r\n                    junit allowEmptyResults: true, testResults: \'reports/unit_tests.xml\'\r\n                }\r\n            }\r\n        }\r\n\r\n        stage(\'Acceptance tests\') {\r\n            steps {\r\n                sh  \'\'\' source activate ${BUILD_TAG}\r\n                        behave -f=formatters.cucumber_json:PrettyCucumberJSONFormatter -o ./reports/acceptance.json || true\r\n                    \'\'\'\r\n            }\r\n            post {\r\n                always {\r\n                    cucumber (buildStatus: \'SUCCESS\',\r\n                    fileIncludePattern: \'**/*.json\',\r\n                    jsonReportDirectory: \'./reports/\',\r\n                    parallelTesting: true,\r\n                    sortingMethod: \'ALPHABETICAL\')\r\n                }\r\n            }\r\n        }\r\n\r\n        stage(\'Build package\') {\r\n            when {\r\n                expression {\r\n                    currentBuild.result == null || currentBuild.result == \'SUCCESS\'\r\n                }\r\n            }\r\n            steps {\r\n                sh  \'\'\' source activate ${BUILD_TAG}\r\n                        python setup.py bdist_wheel\r\n                    \'\'\'\r\n            }\r\n            post {\r\n                always {\r\n                    // Archive unit tests for the future\r\n                    archiveArtifacts allowEmptyArchive: true, artifacts: \'dist/*whl\', fingerprint: true\r\n                }\r\n            }\r\n        }\r\n\r\n        // stage("Deploy to PyPI") {\r\n        //     steps {\r\n        //         sh """twine upload dist/*\r\n        //         """\r\n        //     }\r\n        // }\r\n    }\r\n\r\n    post {\r\n        always {\r\n            sh \'conda remove --yes -n ${BUILD_TAG} --all\'\r\n        }\r\n        failure {\r\n            emailext (\r\n                subject: "FAILED: Job \'${env.JOB_NAME} [${env.BUILD_NUMBER}]\'",\r\n                body: """<p>FAILED: Job \'${env.JOB_NAME} [${env.BUILD_NUMBER}]\':</p>\r\n                         <p>Check console output at &QUOT;<a href=\'${env.BUILD_URL}\'>${env.JOB_NAME} [${env.BUILD_NUMBER}]</a>&QUOT;</p>""",\r\n                recipientProviders: [[$class: \'DevelopersRecipientProvider\']])\r\n        }\r\n    }\r\n}\r\n'},
+    def _flatten(items):
+        for item in items:
+            if item['type'] == 'file':
+                flat_files.append({
+                    'path': item['path'],
+                    'content': item['content']
+                })
+            elif item['type'] == 'dir':
+                _flatten(item['contents'])
 
-# Continue.... TODO
+    _flatten(contents)
+    return flat_files
+
+def truncate_to_token_limit(text, max_tokens, encoding='gpt-4o'):
+    """
+    Truncate the text to fit within the specified token limit.
+    """
+    tokenizer = encoding_for_model(encoding)
+    tokens = tokenizer.encode(text)
+    if len(tokens) <= max_tokens:
+        return text
+    truncated_tokens = tokens[:max_tokens]
+    return tokenizer.decode(truncated_tokens)
+
+def summarize_text(text, max_tokens=200):
+    """
+    Summarize the text to fit within a limited number of tokens.
+    """
+    prompt = f"Summarize the following text to {max_tokens} tokens:\n\n{text}\n\nSummary:"
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant that summarizes text."},
+            {"role": "user", "content": prompt}
+        ],
+        max_tokens=max_tokens,
+        temperature=0.5
+    )
+    return response.choices[0].message.content.strip()
+
+def generate_gpt4o_response(query, context_docs, max_context_tokens=6000):
+    """
+    Generate a response using OpenAI's GPT-4o based on the query and retrieved context documents.
+    """
+    # Summarize to reduce token size
+    summarized_contexts = [summarize_text(doc, max_tokens=200) for doc in context_docs]
+
+    # Combine into a single string
+    combined_context = "\n\n".join(summarized_contexts)
+    
+    # Truncate
+    context = truncate_to_token_limit(combined_context, max_context_tokens)
+
+    prompt = f"""You are an assistant that provides detailed answers based on the following context. 
+The answer should include the most relevant file name and its path. It would be also better to include summary of the file.
+Lastly, it would be best to have the most relevant code snippet from the script:
+
+Context:
+{context}
+
+Question:
+{query}
+
+Answer:"""
+
+    try:
+        response = client.beta.chat.completions.parse(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=1000,
+            temperature=0.2,
+            response_format=ResFormat,
+        )
+        answer = response.choices[0].message.content
+        json_answer = json.loads(answer)
+
+        return json_answer
+        
+    except Exception as e:
+        print(f"Error generating GPT-4o response: {e}")
+        return "I'm sorry, I couldn't process your request at the moment."
+
+# Define a structured output for LLM results
+class ResFormat(BaseModel):
+    file_name: str
+    file_path: str
+    summary: str
+    code_snippet: str
+
+#  Extract repo contents
+res = get_contents(owner=owner, repo=repo, path=path, branch=branch)
+flat_files = flatten_contents(res)
+
+texts = [file['content'] for file in flat_files]
+metadatas = [{'path': file['path']} for file in flat_files]
+ids = [file['path'] for file in flat_files]
+
+# Create vector DB
+collection = chroma_client.get_or_create_collection(name="example_collection", embedding_function=default_ef)
+collection.add(documents=texts, metadatas=metadatas, ids=ids)
+
+# Query results
+query = "Give me the script name having the python code test. It would be better for the script to have library import and function details."
+top_k = 5
+results = collection.query(
+        query_texts=[query],
+        n_results=top_k
+    )
+
+retrieved_docs_with_metadata = []
+for i in range(len(results['documents'][0])):
+  doc = results['documents'][0][i]
+  metadata = results['metadatas'][0][i]
+  retrieved_docs_with_metadata.append({'document': doc, 'metadata': metadata})
+context_docs = [doc for doc in retrieved_docs_with_metadata]
+
+# Generate LLM agent answers
+answer = generate_gpt4o_response(query, context_docs)
+
+print(answer['file_name'])
+print(answer['file_path'])
+print(answer['summary'])
+print(answer['code_snippet'])
+
