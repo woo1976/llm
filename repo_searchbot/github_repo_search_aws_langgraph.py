@@ -1,5 +1,4 @@
-import os
-import json
+
 from pathlib import Path
 import boto3
 from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth, RequestError
@@ -9,7 +8,7 @@ from langchain_aws.chat_models import ChatBedrock
 from langchain_aws.embeddings import BedrockEmbeddings
 from langchain_community.vectorstores import OpenSearchVectorSearch
 from langchain.prompts import ChatPromptTemplate
-from langchain.retrievers import BM25Retriever, EnsembleRetriever
+from langchain.retrievers import EnsembleRetriever
 from langhchain.memory import ConversationBufferMemory
 from langgraph.graph import StateGraph, END 
 from langchain.text_splitter import RecursiveCharacterTextSplitter 
@@ -336,4 +335,187 @@ def print_graph_structure(graph):
     for edge in graph.edges:
         print(f" {edge[0]} -> {edge[1]}")
 
-        # stopped here
+def print_graph_tree(graph, start_node=None, indent=0, max_depth=10): # Recursion
+    if start_node is None:
+        start_node = "START"
+        print("  " * indent + f"- {start_node}")
+        print_graph_tree(graph, start+node=entry_point, indent=indent + 1, max_depth=max_depth)
+        return
+    if indent > max_depth:
+        print("  " * indent + "... (cycle detected)")
+        return
+    print("  " * indent + f"- {start_node}")
+    # Handle conditional transitions for 'check'
+    if start_node == "check":
+        print("  " * (indent + 1) + "- refine")
+        print_graph_tree(graph, "refine", indent + 2, max_depth)
+        print("  " * (indent + 1) + "- END")
+    for edge in graph.edges:
+        if edge[0] == start_node and edge[1] not in ["refine", END]:
+            print_graph_tree(graph, edge[1], indent + 1, max_depth)
+
+print("\nLangGraph Tree Structure:")
+print_graph_tree(graph)
+# LangGraph Tree Structure:
+# - START
+#   - retrieve
+#     - llm
+#       - check
+#         - refine
+#           - refine
+#             - retrieve
+#               - llm
+#                 - check
+#                   - refine
+#                     - refine
+#                       ... (cycle detected)
+#                   - END
+#           - END
+
+# Another visual method
+import networkx as nx
+import matplotlib.pyplot as plt
+
+def plot_graph(graph):
+    G = nx.DiGraph()
+    # Add all nodes
+    for node in graph.nodes:
+        G.add_node(node)
+    G.add_node("END") # Ensure END node is present
+    # Add all edges
+    for edge in graph.edges:
+        G.add_edge(edge[0], edge[1])
+    # Add conditional edges for 'check' node if not present
+    if ("check", "refine") not in G.edges:
+        G.add_edge("check", "refine")
+    if ("check", "END") not in G.edges:
+        G.add_edge("check", "END")
+    pos = nx.spring_layout(G)
+    nx.draw(G, pos, with_labels=True, node_color='lightblue', arrows=True)
+    plt.show()
+
+plot_graph(graph) 
+
+# Asking an initial question.
+# Usage
+user_prompt = "Please find the script regarding how to build XXX steps. Memory can be erased and start over." # Update accordingly
+focus_phrase = "ABC, 123, XYZ" # Update accordingly
+
+# Check if user wants to flush memory before running agent
+maybe_flush_memory(user_prompt)
+
+state = {
+    "user_prompt": user_prompt,
+    "focus_phrase": focus_phrase,
+    "context": "",
+    "answer": "",
+    "attempts": 0
+}
+
+# To suppress verbose logging statements when printing final answers.
+logging.getLogger("langgraph").setLevel(logging.ERROR)
+logging.getLogger("langgraph.pregel").setLevel(logging.ERROR)
+
+final_state = rag_agent.invoke(state)
+print("Final Answer:\n", getattr(final_state["answer"], 'content', str(final_state["answer"])))
+
+# To see conversation memory:
+# print("\n=================================================")
+# print("\nConversation history:")
+# print(memory.buffer)
+
+#### Answer ####
+# Conversation memory flushed (LLM intent detected).
+# Final Answer:
+#  Based on the scripts provided, here are the most relevant files whoing XXX steps, ordered by relevance:
+
+# 1. File. `/file_1/path/script.R`
+
+# Summary: Shows XXXXYYYYZZZZ.
+
+# Key code snippets:
+# ```r
+# # Lines 14-18: AAABBBBCCCC
+# .....
+# [content omitted for brevity]
+# .....
+#
+# The common pattern across these scripts shows XXX typically involves:
+# 1. Initial ABC section
+# 2. Application of XYZ in a abc approach
+# 3. Segmentation based on CDFGH scores.
+# 4. Validation checks and LMNOP analysis.
+# 5. Final segment creation and sizing
+
+# Let me know if you would like additional details about any of these scripts or other aspects of XYZ implementations.
+######
+
+# Asking a subsequent question.
+# Usage
+user_prompt = "Other than the XXX related scripts you provided, I need ABCDE related scripts." # Update accordingly
+focus_phrase = "efg, 456" # Update accordingly
+
+# Check if user wants to flush memory before running agent
+maybe_flush_memory(user_prompt)
+
+state = {
+    "user_prompt": user_prompt,
+    "focus_phrase": focus_phrase,
+    "context": "",
+    "answer": "",
+    "attempts": 0
+}
+
+# To suppress verbose logging statements when printing final answers.
+logging.getLogger("langgraph").setLevel(logging.ERROR)
+logging.getLogger("langgraph.pregel").setLevel(logging.ERROR)
+
+final_state = rag_agent.invoke(state)
+print("Final Answer:\n", getattr(final_state["answer"], 'content', str(final_state["answer"])))
+
+# To see conversation memory:
+# print("\n=================================================")
+# print("\nConversation history:")
+# print(memory.buffer)
+
+#### Answer ####
+# Answer format is similar to the first answer
+# .....
+# [content omitted for brevity]
+# .....
+
+# Asking another subsequent question.
+# Usage
+user_prompt = "Ok. Please give me some scripts that do this and that." # Update accordingly
+focus_phrase = "HIJK, 5678" # Update accordingly
+
+# Check if user wants to flush memory before running agent
+maybe_flush_memory(user_prompt)
+
+state = {
+    "user_prompt": user_prompt,
+    "focus_phrase": focus_phrase,
+    "context": "",
+    "answer": "",
+    "attempts": 0
+}
+
+# To suppress verbose logging statements when printing final answers.
+logging.getLogger("langgraph").setLevel(logging.ERROR)
+logging.getLogger("langgraph.pregel").setLevel(logging.ERROR)
+
+final_state = rag_agent.invoke(state)
+print("Final Answer:\n", getattr(final_state["answer"], 'content', str(final_state["answer"])))
+
+# To see conversation memory:
+# print("\n=================================================")
+# print("\nConversation history:")
+# print(memory.buffer)
+
+#### Answer ####
+# Answer format is similar to the first answer
+# .....
+# [content omitted for brevity]
+# .....
+
+# LLM
