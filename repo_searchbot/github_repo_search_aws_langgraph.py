@@ -1,6 +1,7 @@
 
 from pathlib import Path
 import boto3
+import logging
 from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth, RequestError
 from opensearchpy.helpers import bulk
 from langchain_core.documents import Document 
@@ -12,7 +13,6 @@ from langchain.retrievers import EnsembleRetriever
 from langhchain.memory import ConversationBufferMemory
 from langgraph.graph import StateGraph, END 
 from langchain.text_splitter import RecursiveCharacterTextSplitter 
-import logging
 
 # BEdrock client
 bedrock_runtime = boto3.client("bedrock-runtime", region_name="us-east-2")
@@ -518,4 +518,34 @@ print("Final Answer:\n", getattr(final_state["answer"], 'content', str(final_sta
 # [content omitted for brevity]
 # .....
 
-# LLM
+# LLM based evaluation:
+# Use another LLM prompt to reate the answer for relevance, completness, and clarity.
+# Example: "Given the user request and the answer, rate the answer from 1-5 for relevance."
+
+eval_prompt = f"""
+User request: {user_prompt}
+LLM answer: {final_state['answer']}
+Rate the answer for relevance and completeness (1-5) and explain your rating. 
+"""
+eval_result = llm.invoke(eval_prompt) 
+print("LLM Evaluation:", getattr(eval_result, 'content', str(eval_result))) 
+
+#### Answer ####
+# LLM Evaluation: Rating: 4.5/5
+
+# Explanation of rating:
+
+# Relevance (4/5):
+# Strengths: 
+# - Provides clear summaries for each script
+# - Includes relevant code snippets demonstrating key functionality
+# - Outline common elements across the scripts
+# - Shows different aspects of XXX (abc, edf, 123)
+
+# Minor gaps that prevent a perfect 5/5:
+# - Could include more details about the ABC methodology
+# - Might benefit from explaining the business context/goals of these purposes
+# - Could provide more information about how these scripts interact with each other
+
+# Overall, the answer provides a compreshensive overview of YYY related scripts while maintaining focus on the most relevant aspects. The small gaps in completeness don't significantly impact the usefullness of the response.
+####
