@@ -315,3 +315,258 @@ except bedrock_agent_client.exceptions.ConflictException:
     print(f"Knowledge base: '{kb_name}' already exists. Skipping creation.")
 except Exception as e:
     print(f"Error: {e}")
+
+# Create knowledge base guardrail and chunking
+# Use chunking when creating dadta source after the knowledge base is creatd.
+# bedrock_client = boto3.client("bedrock", region_name=region_name)
+# bedrock_client.create_data_source(....)
+# Guardrail can be used with bedrock agent-runtime
+# See the email I sent.
+
+# Set knowledge base id
+knowledgeBaseId = "yourkbid" # Result from running the prvious code
+
+## Create Data Source
+# Search any data sources you created before (if any)
+# List all data sources
+response = bedrock_agent_client.list_data_sources(knowledgeBaseId=knowledgeBaseId)
+data_sources = response.get('dataSourceSummaries', [])
+
+# Filter data sources containing "repo" in the name (if you named it as such before).
+filtered_sources = [
+    ds for ds in data_sources
+    if "repo" in ds.get('name', '').lower()
+]
+
+# Print matching data sources
+for ds in filtered_sources:
+    print(f"ID: {ds['dataSourceId']}, Name: {ds['name']}")
+
+# Delete existing data sources (if needed ONLY).
+data_source_id = "get-this-from-above-code-result" # ID to be deleted
+
+try:
+    response = bedrock_agent_client.delete_data_source(
+        knowledgeBaseId=knowledgeBaseId,
+        dataSourceId=data_source_id
+    )
+    print("Data source deleted successfully.")
+    print(response)
+except Exception as e:
+    print(f"Error deleting data source: {e}")
+
+# Create dat asource of knowledge base
+data_source_name = "repo-searchbot-data-source" # Change if needed.
+knowledgeBaseId = knowledgeBaseId
+
+try:
+    response = bedrock_agent_client.create_data_source(
+        knowledgeBaseId=knowledgeBaseId,
+        name=data_source_name,
+        dataDeletionPolicy="DELETE",
+        dataSourceConfiguration={
+            "type": "S3",
+            "s3Configuration": {
+                "bucketArn": s3_bucket_arn,
+                "inclusionPrefixes": [s3_prefix]
+            }
+        },
+        vectorIngestionConfiguration={
+            "chunkingConfiguration": {
+                "chunkingStrategy": "FIXED_SIZE",
+                "fixedSizeChunkingConfiguration": {
+                    "maxTokens": 1000, # or adjust as needed
+                    "overlapPercentage": 20 # or adjust as needed
+                }
+            }
+        }
+    )
+    pprint.pprint(response)
+except bedrock_agent_client.exceptions.ConflictException:
+    print("Data source already exists. Skipping creation.")
+except Exception as e:
+    print(f"Error: {e}")
+
+# NOTE: Per https://docs.aws.amazon.com/bedrock/latest/APIReference/API_agent_UpdateDataSource.html,
+# chunking strategy cannot be updated after creation. Maybe need to delete data source and start over if needed.
+
+# See information about created data source
+response = bedrock_agent_client.list_data_sources(
+    knowledgeBaseId=knowledgeBaseId
+)
+pprint.pprint(response)
+
+## Ingest s3 dasta into OpenSearch Service DB via Knowledge Base and Data Source
+# Ingest data into knowledge base (This may take a few minutes to hours depending on data size).
+data_source_id = 'thesourceid' # Get this from the create_data_source response
+response = bedrock_agent_client.start_ingestion_job(
+    knowledgeBaseId=knowledgeBaseId,
+    dataSourceId=data_source_id
+)
+pprint.pprint(response)
+
+# Check ingesting job completion status
+job = response["ingestionJob"]
+job_details = bedrock_agent_client.get_ingestion_job(
+    knowledgeBaseId=knowledgeBaseId,
+    dataSourceId=data_source_id,
+    ingestionJobId=job["ingestionJobId"]
+)
+
+ingestion_job = job_details["ingestionJob"]
+pprint.pprint(ingestion_job)
+
+# Fetch documents from the index
+response = oss_client.search(
+    index=index_name,
+    body={
+        "size": 2, # Number of documents to fetch
+        "query": {
+            "match_all": {}
+        }
+    }
+)
+
+# Print the ingested documents. The results may be long. Run the below when needed.
+for hit in response['hits']['hits']:
+    pprint.pprint(hit['_source'])
+
+## Bedrock Agent
+agent_name = "agent-repo-searchbot" # Change if needed.
+agent_description = "Agent for codebase search using Bedrock KB"
+foundation_model = "us.anthropic.claude-3-5-sonnet-20241022-v2:0" # Get this information from bedrock console. Use other models if needed.
+agent_role_arn = "arn:aws:iam::role-name"
+kms_key_arn = "arn:aws:kms:region:keyinformation"
+
+instruction = (
+    "You are an expert codebase assistant. For each user question, use the provided knowledge base to retrieve and present the most relevant scripts. "
+    "For your response, follow these guidelines:\n"
+    "- Return 3 to 5 scripts in order of relevance (if available).\n"
+    "- For each script, provide:\n"
+    "    - The file path (as found in the metadata, so users can locate the file in the codebase).\n"
+    "    - A concise summary of what the script does, especially steps related to the question.\n"
+    "    - Several relevant code snippets that demonstrate these steps, with the starting line number for each snippet.\n"
+    "- If multiple scripts are found, summarize and provide snippets for each one separately.\n"
+    "- If you do not have enough information to answer, reply with 'not enough information' or 'cannot find'.\n"
+    "Always base your answers strictly on the content of the knowledge base. Do not fabricate information."
+)
+
+response = bedrock_agent_client.create_agent(
+    agentCollaboration='DISABLED',
+    agentName=agent_name,
+    agentResourceRoleArb=agent_role_arn,
+    customerEncryptionKeyArn=kms_key_arn,
+    description=agent_description,
+    foundationModel=foundation_model,
+    instruction=instruction
+)
+
+response
+
+# agent_id = response['agent']['agentId']
+agent_id = 'youragentid'
+
+try:
+    # Prepare the agent after creation
+    response = bedrock_agent_client.prepare_agent(agentId=agent_id)
+    
+    # Print the response details
+    print(f"Agent preparation initiated for agent_ID: {response['agentId']}")
+    print(f"Agent status: {response['agentStatus']}")
+    print(f"Agent version: {response['agentVersion']}")
+    print(f"Prepared at: {response['preparedAt']}")
+
+except Exception as e:
+    print(f"Error preparing agent: {e}")
+
+# Note: Next, associate knowledge base with the DRAFT version (default) of the agent.
+# Associate knowledge base with the agent
+response = bedrock_agent_client.associate_agent_knowledge_base(
+    agentId=agent_id,
+    agentVersion='DRAFT', # Only this value is accepted at this time.
+    description="Associate KB with DRAFT version",
+    knowledgeBaseId=knowledgeBaseId,
+    knowledgeBaseState="ENABLED"
+)
+print("Knowledge base associated with DRAFT version.")
+
+# NOTE: then, create an alias from the bedrock agent console. Cannot be done via boto3.
+# Alias creation will create a published version. The knowledge base associated with DRAFT
+# version will be automatically associated with the published version.
+
+agent_alias_name = "first-version-repo-searchbot" # Change if needed.
+
+# Check agent version
+response = bedrock_agent_client.list_agent_versions(agentId=agent_id)
+
+for version in response["agentVersionSummaries"]:
+    print(f"Version: {version['agentVersion']}, Status: {version['agentStatus']}, Description: {version.get('description', '')}")
+
+# Test bedrock agent
+# Get alias id
+response = bedrock_agent_client.list_agent_aliases(agentId=agent_id)
+for alias in response['agentAliasSummaries']:
+    print(f"Alias name: {alias['agentAliasName']}, Alias ID: {alias['agentAliasId']}")
+
+# Initialize the Bedrock Agent Runtime client
+bedrock_agent_runtime_client = boto3.client('bedrock-agent-runtime', region_name = "us-east-2") # Change region if needed.
+
+# Define your agent's details
+agent_alias_id = "agentaliasid" # Replace with your Agent Alias ID
+session_id = "test-session-1" # A unique ID for the conversation session. Change if needed.
+
+def extract_bedrock_agent_answer(response):
+    """
+    Extracts and returns only the answer text from a Bedrock Agent streaming response.
+    Handles both 'chunk' and 'bytes' event types.
+    """
+    answer = ""
+    for event in response['completion']:
+        # If the event contains the answer as bytes (most common for final answer)
+        if 'chunk' in event and 'bytes' in event['chunk']:
+            answer += event['chunk']['bytes'].decode('utf-8')
+        # Some agents may use just 'bytes' at the top level
+        elif 'bytes' in event:
+            answer += event['bytes'].decode('utf-8')
+        # Some agents may use 'chunk' and 'completion'
+        elif 'chunk' in event and 'completion' in event['chunk']:
+            answer += event['chunk']['completion']
+    return answer.strip()
+
+def format_query_with_instructions(query):
+    """
+    Adds explicit formatting instructions to each query to ensure the agent follows
+    the required response format.
+    """
+    format_instructions = (
+        "CRITICAL INSTRUCTION - YOUR MUST FOLLOW THIS EXACT FORMAT FOR YOUR RESPONSE:\n\n"
+        "For each relevant file (provide at least 3 if available), include ALL of the following:\n"
+        "## [File Name]\n"
+        "- **Full path**: [complete file path from metadata]\n"
+        "- **Summary**: [concise summary of what the script does]\n"
+        "- **Code Snippets**:\n"
+        "```[language]\n"
+        "# Line [line number]\n"
+        "```\n\n"
+        "EVERY file you mention MUST include ALL three elements above (path, summary, AND code snippets).\n"
+        "DO NOT provide general information without specific files.\n"
+        "If you cannot find specific files with paths and code, say 'I cannot find specific fles related to this query.'\n\n"
+        "Now, regarding this question: "
+    )
+    return format_instructions + query
+
+def validate_agent_response(response_text):
+    """
+    Validate that the agent's response includes the required elements:
+    - File paths
+    - Summary
+    - Code Snippets
+
+    Returns a tuple of (is_valid, missing_elements)
+    """
+    # First check if this is a "cannot find" response
+    if re.seasrch(r'cannot find|not enough information', response_text, re.IGNORECASE):
+        # This is a valid "no results" response
+        return (True, [])
+
+    missing_elements = []
