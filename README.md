@@ -10,11 +10,13 @@
 ## Github repo searchbot agent to find out relevant code examples
 - This is an LLM agent example I built for searching relevant information from github repositories you want to search for.  
 
-### You may take one of the two different approaches to achieve the goal  
+### You may take one of the three different approaches to achieve the goal  
 - Approach 1: Look at `./repo_searchbot/app.py` or `./repo_searchbot/github_repo_search_4.ipynb`, both of which contain the same code.  
     - This used OpenAI SDK as an LLM agent framework.    
 - Approach 2: Also, you can look at `./repo_searchbot/github_repo_search_aws_langgraph.py`.  
-    - This used AWS OpenSearch Service, AWS Bedrock, and Langchain & Langgraph as agent frameworks.  
+    - This used AWS OpenSearch Service, AWS Bedrock models, and Langchain & Langgraph as agent framework.  
+- Approach 3: Also, you can look at `./repo_searchbot/github_repo_search_knowledgebase_bedrock_agent.py`.  
+    - This used AWS OpenSearch Service, AWS Bedrock models, AWS Knowledge Base, and AWS Bedrock agent as agent framework.   
 
 ---
 ### References
@@ -24,7 +26,7 @@
 [Structured output in OpenAI](https://platform.openai.com/docs/guides/structured-outputs/introduction?api-mode=chat)  
 [AWS OpenSearch Service tutorials](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/tutorials.html)  
 [AWS Bedrock tutorials](https://docs.aws.amazon.com/bedrock/latest/userguide/getting-started.html)  
-
+[AWS Bedrock agent tutorials]()
 ---
 ### Contact
 Hakwoo Kim (hakwoo@gmail.com)  

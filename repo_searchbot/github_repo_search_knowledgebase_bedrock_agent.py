@@ -570,3 +570,162 @@ def validate_agent_response(response_text):
         return (True, [])
 
     missing_elements = []
+
+    # Look for file path pattern (more specific than beore)
+    file_paths = re.findall(r'\*\*Full Path\*\*:\s*([\/\\][^\n]+)', response_text)
+    if not file_paths:
+        missing_elements.append("file paths")
+    
+    # Look for summary section
+    summaries = re.findall(r'\*\*Summary\*\*:\s*([^\n]+)', response_text)
+    if not summaries:
+        missing_elements.append("file summaries")
+
+    # Look for code blocks with language and line numebrs
+    code_blocks = re.findall(r'```[\w]*[\s\S]*?```', response_text)
+    if not code_blocks:
+        missing_elements.append("code snippets")
+    else:
+        # Check if code blocks have line numbers
+        has_line_numbers = any(re.search(r'# Line \d+', block) for block in code_blocks)
+        if not has_line_numbers:
+            missing_elements.append("line numbers in code snippets")
+
+    # Cound file headings (## [filename])
+    file_headings = re.findall(r'##\s+\S+', response_text)
+
+    # Check for proper structure - we should have matching counts of elements
+    element_counts = {
+        "file_headings": len(file_headings),
+        "file_paths": len(file_paths),
+        "summaries": len(summaries),
+        "code blocks": len(code_blocks)
+    }
+
+    # If we have inconsistent counts, note it
+    if len(set(element_counts.values())) > 1 and min(element_counts.values()) > 0:
+        missing_elements.append(f"consistent structure (element counts: {element_counts})")
+
+    is_valid = len(missing_elements) == 0
+    return (is_valid, missing_elements)
+
+def get_validated_agent_response(client, agent_id, agent_alias_id, session_id, query, max_return=3):
+    """
+    Gets a response from the agent and validates it contains the required elements.
+    Will retry up to max retries times if the response is missing elemennts.
+    """
+    formatted_prompt = format_query_with_instructions(query)
+
+    for attemp in range(max_retries + 1):
+        if attempt == 0:
+            prompt_to_send = formatted_prompt
+        else:
+            # More forceful retry instruction
+            prompt_to_send = (
+                f"CRITICAL: Your previous response did not follow the required format. Attempt {attempt}/{max_retries}.\n\n"
+                f"You MUST structure your response like this for EACH file:\n"
+                f"## [File Name]\n"
+                f"- **Full Path**: [complete file path]\n"
+                f"- **Summary**: [concise summary]\n"
+                f"- **Code Snippets**:\n"
+                f"```[language]\n"
+                f"# Line [number]\n"
+                f"[code snippet]\n"
+                f"```\n\n"
+                f"Original question: {query}\n\n"
+                f"DO NOT respond with general information. Each file mentioned MUST include ALL three elements."
+            )
+
+        print(f"Attempt {attempt+1}/{max_retries+1} - Sending query to agent...")
+
+        response = client.invoke_agent(
+            agentId=agent_id,
+            agentAliasId=agent_alias_id,
+            sessionId=session_id,
+            inputText=prompt_to_send,
+            enableTrace=True
+        )
+
+        answer = extract_bedrock_agent_answer(response)
+        is_valid, missing_elements = validate_agent_response(answer)
+
+        if is_valid:
+            print("Response validated successfully.")
+            return answer
+
+        print(f"Attempt {attempt+1}/{max_retries+1} - Response missing: {', '.join(missing_elements)}")
+
+        if attempt == max_retries:
+            print("WARNING: Maximum retries reached. Returning last response with a warning header.")
+            # Add a warning header to the response
+            return (
+                "WARNING: This response doesn't follow the required format. It may be missing file paths, "
+                "summaries, or code snippets. \n\n" + answer
+            )
+
+    # Should never reach here, but just in case
+    return answer
+
+# The prompt you want to send to the agent
+prompt_text = "please find the scripts regarding how to track marketing performance metrics."
+
+answer = get_validated_agent_response(
+    bedrock_agent_runtime_client,
+    agent_id,
+    agent_alias_id,
+    session_id,
+    prompt_text
+)
+
+print("\n==== FIRST QUERY RESULTS ====")
+print(answer)
+
+# For debugging, - print a clear evaluation of response quality
+is_valid, missing_elements = validate_agent_response(answer)
+if not is_valid:
+    print(f"\n Response still missing: {', '.join(missing_elements)}")
+else:
+    print("\n Response meets all format requirements")
+
+prompt_text = "Can you show me scripts for auto or mortage other than other loans? Pleae give me the file names and their file paths, respectively."
+
+answer = get_validated_agent_response(
+    bedrock_agent_runtime_client,
+    agent_id,
+    agent_alias_id,
+    session_id,
+    prompt_text
+)
+
+print("\n==== SECOND QUERY RESULTS ====")
+print(answer)
+
+# For debugging, - print a clear evaluation of response quality
+is_valid, missing_elements = validate_agent_response(answer)
+if not is_valid:
+    print(f"\n Response still missing: {', '.join(missing_elements)}")
+else:
+    print("\n Response meets all format requirements")
+
+prompt_text = "Can you show useful code snippets for pulling customer profile data?"
+
+answer = get_validated_agent_response(
+    bedrock_agent_runtime_client,
+    agent_id,
+    agent_alias_id,
+    session_id,
+    prompt_text
+)
+
+print("\n==== THIRD QUERY RESULTS ====")
+print(answer)
+
+# For debugging, - print a clear evaluation of response quality
+is_valid, missing_elements = validate_agent_response(answer)
+if not is_valid:
+    print(f"\n Response still missing: {', '.join(missing_elements)}")
+else:
+    print("\n Response meets all format requirements")
+
+# TODO: May need to work on improving the bedrock agent performance. 
+# It seems that the agent using langchain and langgraph performs better than this.
