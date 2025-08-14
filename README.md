@@ -1,13 +1,13 @@
 # LLM personal projects
 
-## Job onboarding chatbot agent to accommodate efficient onboarding process
+## - Job onboarding chatbot agent to accommodate efficient onboarding process
 - This is an LLM agent example I built for job onboarding. Especially for new hires, using a chatbot agent may make their onboarding process easier and more effficient.  
 - Run code lines of  `./onboarding_chatbot/Langchain_onboarding_hk.ipynb`, which will start the chatbot interactive web server.  
 - `./onboarding_chatbot/app.py` includes source code behind the agent.  
 - `./RAG_data` includes some example onboarding materials.   
 ---
 
-## Github repo searchbot agent to find out relevant code examples
+## - Github repo searchbot agent to find out relevant code examples
 - This is an LLM agent example I built for searching relevant information from github repositories you want to search for.  
 
 ### You may take one of the three different approaches to achieve the goal  
