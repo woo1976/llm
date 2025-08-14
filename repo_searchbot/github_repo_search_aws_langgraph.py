@@ -36,7 +36,7 @@ host = "hosturl:port" # without https:// part. get this from opensearch console.
 awsauth = AWSV4SignerAuth(credentials, 'us-east-2', 'aoss')
 vectorstore = OpenSearchVectorSearch(
     opensearch_url=host,
-    index_name="your-index-name" # create this yourself.
+    index_name="your-index-name", # create this yourself.
     embedding_function=embeddings,
     http_auth=awsauth,
     use_ssl=True,
@@ -51,7 +51,7 @@ cloned_repo_path = "/your/repo/path"
 # Functions to process data
 def get_file_content(file_path):
     try:
-        with_open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             return f.read() 
     except UnicodeDecodeError:
         # print(f"UnicideDecodeError: Could not read file as UTF-8: (file_path)") # There were related to .git/objects contents.
