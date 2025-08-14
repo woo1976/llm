@@ -26,7 +26,8 @@
 [Structured output in OpenAI](https://platform.openai.com/docs/guides/structured-outputs/introduction?api-mode=chat)  
 [AWS OpenSearch Service tutorials](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/tutorials.html)  
 [AWS Bedrock tutorials](https://docs.aws.amazon.com/bedrock/latest/userguide/getting-started.html)  
-[AWS Bedrock agent tutorials]()
+[AWS Bedrock agent tutorials](https://aws.amazon.com/awstv/watch/0453c416302/)  
+
 ---
 ### Contact
 Hakwoo Kim (hakwoo@gmail.com)  
