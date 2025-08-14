@@ -167,4 +167,151 @@ for filename in os.listdir(output_dir):
 paginator = s3.get_paginator('list_objects_v2')
 page_iterator = paginator.paginate(Bucket=s3_bucket, Prefix=s3_prefix)
 
+file_count = 0
+for page in page_iterator:
+    if "Contents" in page:
+        file_count += len(page["Contents"])
 
+print(f"Number of file s in S3 prefix: {file_count}")
+
+# Delete all files in s3 (if needed ONLY)
+objects_to_delete = []
+for page in page_iterator:
+    if "Contents" in page:
+        for obj in page["Contents"]:
+            objects_to_delete.append({'Key': obj["Key"]})
+
+# Delete in batches of 1000 (s3 limit per request)
+for i in range(0, len(objects_to_delete), 1000):
+    s3.delete_objects(
+        Bucket=s3_bucket,
+        Delete=['Objects': objects_to_delete[i:i+1000]]
+    )
+
+print("All files in the S3 prefix have been deleted.")
+
+## OpenSearch Service setup
+credentials = boto3.Session().get_credentials()
+
+host = "hostidnumber.region.aoss.amazonaws.com" # Get OpenSeasrch Serivce end point url from the console.
+awsauth = AWSV4SignerAuth(credentials, region_name, 'aoss')
+oss_client = OpenSearch(
+    hosts=[{'host': host, 'port': 443}],
+    http_auth=awsauth,
+    use_ssl=True,
+    verify_certs=True,
+    connection_class=RequestsHttpConnection,
+    timeout=300
+)
+
+# Set index name for document loadings
+index_name = "test-index-1" # Change name if needed.
+
+# Use amanaon.titan-embed-text-v2:0 for embedding. Use other embedding model if needed.
+region_name = "us=east-2" # Change if needed.
+embedding_model = "amazon.titan-embed-text-v2:0"
+embedding_model_arn = f"arn:aws:bedrock:{region_name}::foundation-model/{embedding_model}"
+embedding_max_tokens = 8192 # Max input tokens for this model.
+embedding_context_dimension = 1024 # Output dimension per aws web documentations.
+
+body_json = {
+    "settings": {
+        "index.knn": "true",
+        "number_of_shards": 1,
+        "knn.algo+param.ef_search": 512,
+        "number_of_replicas": 0,
+    },
+    "mappings": {
+        "properties": {
+            "vector": {
+                "type": "knn_vector",
+                "dimension": embedding_context_dimension,
+                "method": {
+                    "name": "hnsw",
+                    "engine": "faiss",
+                    "space_type": "12"
+                }
+            },
+            "ids": {
+                "type": "text"
+            },
+            "metadata": {
+                "type": "text"
+            },
+            "document": {
+                "type": "text"
+            }
+        }
+    }
+}
+try:
+    index_response = oss_client.indices.create(index=index_name, body=json.dump(body_json))
+except RequestError as e:
+    print(f'Error while trying to create the index, with error {e.error}')
+
+# Get existing index settings and mappings
+index_info = oss_client.indices.get(index=index_name)
+print(json.dumps(index_info, indent=2))
+
+## Bedrock Knowledge Base setup
+bedrock_agent_client = boto3.client(
+    'bedrock-agent', region_name=region_name
+)
+
+# Get information about previously created knowledge bases (if any)
+# List all knowledge bases
+response = bedrock_agent_client.list_knowledge_bases()
+knowledge_bases = response.get('knowledgeBaseSummaries', [])
+ 
+# Filter by name containing "repo-searchbot" (if it was named as such)
+filtered_kbs = [
+    kb for kb in knowledge_bases
+    if "repo" in kb.get('name', '')
+]
+
+# Print matching knowledge bases
+for kb in filtered_kbs:
+    print(f"ID: {kb['knowledgeBaseId']}, Name: {kb['name']}")
+
+# Delete knowledge base (if needed ONLY)
+for kb in filtered_kbs:
+    kb_id = kb['KnowledgeBaseId']
+    print(f"Deleting knowledge base: {kb_id}")
+    bedrock_agent_client.delete_knowledge_base(knowledgeBasedId=kb_id)
+
+# OpenSearch service storage configuration
+storage_config = {
+    "type": "OPENSEARCH SERVERLESS",
+    "opensearchServerlessConfiguration": {
+        "collectionArn": "arn:aws:aoss:region:numbers:collection/alphanumericids", # Get info about region, numbers, and alphanumericids.
+        "vectorIndexName": index_name,
+        "fieldMapping": {
+            "textField": "document",
+            "metadataField": "metadata",
+            "vectorField": "vector"
+        }
+    }
+}
+
+# Set some parameters
+kb_name = "your-kb-name"
+kb_description = "Knowledge base for repo search agent" 
+kb_configuration = {"type": "VECTOR", "vectorKnowledgeBaseConfiguration": {"embeddingModelArn": embedding_model_arn}}
+# guardrail_arn = "arn:aws:bedrock:region:guardrailinfo"
+# guardrail_version = "1"
+
+# Create knowledge base
+try:
+    create_kb_response = bedrock_agent_client.create_knowledge_base(
+        name=kb_name,
+        description=kb_description,
+        roleArn="arn:aws:iam::rolearninformation",
+        knowledgeBaseConfiguration=kb_configuration,
+        storageConfiguration=storage_config
+    )
+    print("knowledge base created successfully.")
+    pprint.pprint(create_kb_response)
+except bedrock_agent_client.exceptions.ConflictException:
+    print(f"Knowledge base: '{kb_name}' already exists. Skipping creation.")
+except Exception as e:
+    print(f"Error: {e}")
